@@ -1,36 +1,38 @@
 import json
 import pika
+from models import Contact
+from mongoengine import connect
 
-def send_email_stub(contact_id):
-    print(f"Email sent to contact with ID: {contact_id}")
+# Підключення до MongoDB
+connect(host='mongodb+srv://PythonDB:cud4BUXMwUmTI9A9@cluster0.zv0mgxq.mongodb.net/')
 
-def callback(ch, method, properties, body):
-    message = json.loads(body)
-    print(f"Received message: {message}")
+credentials = pika.PlainCredentials('guest', 'guest')
+connection = pika.BlockingConnection(pika.ConnectionParameters(host='localhost', port=5672, credentials=credentials))
+channel = connection.channel()
 
-    send_email_stub(message['contact_id'])
+channel.queue_declare(queue='web16_queue', durable=True)
 
-    # Для того щоб змінити на True
-    # contact = Contact.objects.get(id=message['contact_id'])
-    # contact.email_sent = True
-    # contact.save()
 
-    print(f"Email sent to contact with ID: {message['contact_id']}")
+def process_message(ch, method, properties, body):
+    message = json.loads(body.decode())
+    contact_id = message['contact_id']
+
+    contact = Contact.objects(id=contact_id).first()
+    if contact:
+        # Simulate sending email
+        print(f"Sending email to {contact.email}...")
+        # Assume email sending succeeds
+        contact.email_sent = True
+        contact.save()
+        print(f"Email sent to {contact.email}")
+    else:
+        print(f"Contact with id {contact_id} not found.")
+
     ch.basic_ack(delivery_tag=method.delivery_tag)
 
 
-def main():
-    credentials = pika.PlainCredentials('guest', 'guest')
-    connection = pika.BlockingConnection(pika.ConnectionParameters('localhost', 5672, '/', credentials))
-    channel = connection.channel()
+channel.basic_qos(prefetch_count=1)
+channel.basic_consume(queue='web16_queue', on_message_callback=process_message)
 
-    channel.queue_declare(queue='web_16_queue', durable=True)
-    channel.basic_qos(prefetch_count=1)
-    channel.basic_consume(queue='web_16_queue', on_message_callback=callback)
-
-    print(' [*] Waiting for messages. To exit press CTRL+C')
-    channel.start_consuming()
-
-
-if __name__ == '__main__':
-    main()
+print(' [*] Waiting for messages. To exit press CTRL+C')
+channel.start_consuming()
